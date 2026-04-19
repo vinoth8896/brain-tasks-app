@@ -1,0 +1,50 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: eu-central-1
+    CLUSTER_NAME: brain-cluster
+    IMAGE_NAME: vino2488/brain-tasks-app
+    IMAGE_TAG: latest
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Docker Hub...
+      - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+
+      # IMPORTANT: set kubeconfig path FIRST
+      - export KUBECONFIG=$HOME/.kube/config
+
+      - echo Updating kubeconfig for EKS...
+      - aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $CLUSTER_NAME --kubeconfig $HOME/.kube/config
+
+      - echo Validating kubeconfig...
+      - kubectl config view
+      - kubectl config get-contexts
+      - kubectl config current-context
+
+      - echo Checking cluster nodes...
+      - kubectl get nodes
+
+  build:
+    commands:
+      - echo path
+      - pwd
+      - echo Building Docker image from Dockerfile...
+      - docker build -t $IMAGE_NAME:$IMAGE_TAG dist/.
+
+      - echo Pushing Docker image to Docker Hub...
+      - docker push $IMAGE_NAME:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo Deploying Kubernetes manifests to EKS...
+
+      - kubectl apply -f dist/deployment.yml
+      - kubectl apply -f dist/service.yml
+
+      - echo Waiting for rollout...
+      - kubectl rollout status deployment/brain-app
+
+      - echo Deployment completed successfully
